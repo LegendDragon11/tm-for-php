@@ -1,7 +1,7 @@
 <?php
 // define data.json
-define( 'dir', explode("/tm.php", __FILE__)[0] );
-define( 'data', json_decode( file_get_contents("data.json", dir . "/data.json" ), true ) );
+$data = json_decode( file_get_contents( dirname(dirname(__FILE__) ) . "/tm/data.json" ), true );
+require_once( dirname(dirname(__FILE__) ) . "/HomeConnectApi.php");
 
 /** Function to open urls in browser
  * @param string $url Url to open in the browser
@@ -25,50 +25,70 @@ function open( $url ) {
 
 /*================================= GETTER PART =================================*/
 function getAuthorizeCode() {
-    return data["authorize"]["code"];
+    global $data;
+    return $data["authorize"]["code"];
 }
 
 function getAccessToken() {
-    return data["token"]["access_token"];
+    global $data;
+    return $data["token"]["access_token"];
 }
 
 function getRefreshToken() {
-    return data["token"]["refresh_token"];
+    global $data;
+    return $data["token"]["refresh_token"];
+}
+
+function getIdToken() {
+    global $data;
+    return $data["token"]["id_token"];
 }
 
 function getLastTokenCall() {
-    return data["token"]["last_token_call"];
+    global $data;
+    return $data["token"]["last_token_call"];
 }
 
 function getTokenType() {
-    return data["token"]["token_type"];
+    global $data;
+    return $data["token"]["token_type"];
 }
 
 function getExpiresIn() {
-    return data["token"]["expires_in"];
+    global $data;
+    return $data["token"]["expires_in"];
 }
 
 function getScopes() {
-    return data["token"]["scope"];
+    global $data;
+    return $data["token"]["scope"];
 }
 /*============================================================================*/
 
 /** Function to write the data.json
- * @param string $arg type to rewrite
- * @param string|integer $value value to rewrite
- * @param boolean $token_auth True == Auth
+ * @param string $rewrite var to rewrite
  */
-function write( $arg, $value, $token_auth ) {
-    // vars
-    $rewrite = json_decode( file_get_contents("data.json", dir . "/data.json" ), true );
-    // Switch between token or auth
-    if ($token_auth) {
-        $rewrite["authorize"][ $arg ] = $value;
-    } else {
-        $rewrite["token"][ $arg ] = $value;
-    }
+function write( $rewrite ) {
     // rewrite file
-    file_put_contents("data.json", json_encode( $rewrite ));
+    file_put_contents(dirname(dirname(__FILE__) ) . "/tm/data.json", json_encode( $rewrite ));
+}
+
+/**
+ * Function to reset all Data
+ */
+function resetData() {
+
+    $json["token"]["access_token"] = null;
+    $json["token"]["refresh_token"] = null;
+    $json["token"]["expires_in"] = null;
+    $json["token"]["id_token"] = null;
+    $json["token"]["token_type"] = null;
+    $json["token"]["scope"] = null;
+    $json["token"]["last_token_call"] = null;
+
+    $json["authorize"]["code"] = null;
+
+    write($json);
 }
 
 /**
@@ -95,7 +115,7 @@ function authorize( $url, $client_id, $scopes ) {
     open($fullUrl);
 
     // start php server for authorization
-    $cmd = 'cd "' . dir . '" && php -S 127.0.0.1:8080 incoming.php';
+    $cmd = 'cd "' . dirname(dirname(__FILE__) ) . '/tm' . '" && php -S 127.0.0.1:8080 incoming.php';
     shell_exec("$cmd");
 
     return false;
@@ -108,20 +128,21 @@ function authorize( $url, $client_id, $scopes ) {
  * @return mixed Return the access_token
  */
 function getToken( $url, $client_id, $client_secret ) {
+    global $data;
+
+    if ( is_string($data["token"]["refresh_token"]) ) {
+
+        $distance = time() - $data["token"]["last_token_call"];
+        $limit = $data["token"]["expires_in"] - 3600;
+
+        if ( $distance >= $limit ) {
+            return refreshToken( $url, $client_id, $client_secret, "");
+        }
+        return $data["token"]["access_token"];
+    }
 
     // Check if there is a Authorization code
-    if ( data["authorize"]["code"] != null ) {
-
-        if ( data["token"]["refresh_token"] != null && data["token"]["access_token"] != null) {
-            $distance = time() - getLastTokenCall();
-            $limit = getExpiresIn() - 3600;
-
-            if ( $distance >= $limit ) {
-                refreshToken( $url, $client_id, $client_secret, "");
-            } else {
-                return getAccessToken();
-            }
-        }
+    if ( is_string( $data["authorize"]["code"] ) )  {
 
         //================= Url build ===================
         $params_array = [
@@ -130,7 +151,7 @@ function getToken( $url, $client_id, $client_secret ) {
             "client_id" => $client_id,
             "client_secret" => $client_secret,
             "redirect_uri" => "http://localhost:8080",
-            "code" => getAuthorizeCode()
+            "code" => $data["authorize"]["code"]
         ];
 
         $params = http_build_query($params_array);
@@ -162,14 +183,18 @@ function getToken( $url, $client_id, $client_secret ) {
         // If the token is present, else send error
         // You have to ask two options (each api is different in error return)
         if ( !isset($query["error"]) && !isset($query["status"]) ) {
-            write("access_token", $query["access_token"], false);
-            write("refresh_token", $query["refresh_token"], false);
-            write("id_token", $query["id_token"], false);
-            write("expires_in", $query["expires_in"], false);
+            $json = $data;
 
-            write("token_type", $query["token_type"], false);
-            write("scope", $query["scope"], false);
-            write("last_token_call", time(), false);
+            $json["token"]["access_token"] = $query["access_token"];
+            $json["token"]["refresh_token"] = str_replace( "=", "", urldecode( $query["refresh_token"] ));
+            $json["token"]["id_token"] = $query["id_token"];
+            $json["token"]["expires_in"] = $query["expires_in"];
+
+            $json["token"]["token_type"] = $query["token_type"];
+            $json["token"]["scope"] = $query["scope"];
+            $json["token"]["last_token_call"] = time();
+
+            write( $json );
 
             return $query["access_token"];
         } else {
@@ -194,9 +219,10 @@ function getToken( $url, $client_id, $client_secret ) {
  * @return mixed return token
  */
 function refreshToken( $url, $client_id, $client_secret, $scope ) {
+    global $data;
 
     // Check if there is a Authorization code
-    if ( data["authorize"]["code"] != null ) {
+    if ( is_string( $data["authorize"]["code"] ) ) {
 
         //================= Url build ===================
         $params_array = [
@@ -238,14 +264,18 @@ function refreshToken( $url, $client_id, $client_secret, $scope ) {
         // If the token is present, else send error
         // You have to ask two options (each api is different in error return)
         if ( !isset($query["error"]) && !isset($query["status"]) ) {
-            write("access_token", $query["access_token"], false);
-            write("refresh_token", $query["refresh_token"], false);
-            write("id_token", $query["id_token"], false);
-            write("expires_in", $query["expires_in"], false);
+            $json = $data;
 
-            write("token_type", $query["token_type"], false);
-            write("scope", $query["scope"], false);
-            write("last_token_call", time(), false);
+            $json["token"]["access_token"] = $query["access_token"];
+            $json["token"]["refresh_token"] = str_replace( "=", "", urldecode( $query["refresh_token"] ));
+            $json["token"]["id_token"] = $query["id_token"];
+            $json["token"]["expires_in"] = $query["expires_in"];
+
+            $json["token"]["token_type"] = $query["token_type"];
+            $json["token"]["scope"] = $query["scope"];
+            $json["token"]["last_token_call"] = time();
+
+            write( $json );
 
             return $query["access_token"];
         } else {

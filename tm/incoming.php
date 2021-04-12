@@ -4,8 +4,8 @@
  * This file exist to get the authorization code and save it into json.
  */
 
-define('__ROOT__', dirname(dirname(__FILE__)));
-require_once(__ROOT__ . "/tm/tm.php");
+$data = json_decode( file_get_contents( dirname(dirname(__FILE__) ) . "/tm/data.json" ), true );
+require_once("./tm.php");
 
 $redirect_params = explode("?", $_SERVER["REQUEST_URI"])[1];
 
@@ -17,7 +17,9 @@ if ( isset( $redirect_params ) ) {
         // user feedback
         echo("<p>authorized!</p>");
         // save code
-        write( "code", $code, true);
+        $json = $data;
+        $json["authorize"]["code"] = $code;
+        write( $json );
         // stop php server
         shell_exec("killall -9 php");
         // return code for developer
