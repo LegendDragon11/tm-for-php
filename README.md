@@ -1,6 +1,8 @@
 # tm-for-php Token Manager for your php projects
 Using OAuth in your project, presents token and other OAuth stuff. This libary is only for people who want a authorization on the server device! (not for websites)
 
+theres also a libary for node js, check /parcivad/tm
+
 [![Discord](https://img.shields.io/discord/690934524955197471?label=Discord&logo=discord)](https://discord.gg/MFhh5XEM2b)
 
 ## Import
